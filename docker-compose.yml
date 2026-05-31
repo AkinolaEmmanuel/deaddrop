@@ -1,0 +1,36 @@
+# DeadDrop is an interactive CLI, so run each role as a one-off container:
+#
+#   1. Put the file you want to send in ./outbox (e.g. ./outbox/secret.txt)
+#   2. Sender (Client A):
+#        docker compose run --rm --service-ports sender
+#        → choose "2" (create), room id, path "/data/secret.txt", passphrase
+#   3. Receiver (Client B), in a second terminal:
+#        docker compose run --rm receiver
+#        → choose "1" (join), same room id, same passphrase
+#   4. The decrypted file lands in ./inbox/received_file
+#
+# Both one-off containers join the project network, so the receiver reaches
+# the sender by its service name ("sender") via DEADDROP_URL.
+
+services:
+  sender:
+    build: .
+    image: deaddrop:latest
+    stdin_open: true
+    tty: true
+    environment:
+      DEADDROP_ADDR: ":8080"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./outbox:/data:ro
+
+  receiver:
+    build: .
+    image: deaddrop:latest
+    stdin_open: true
+    tty: true
+    environment:
+      DEADDROP_URL: "ws://sender:8080/ws"
+    volumes:
+      - ./inbox:/home/deaddrop
