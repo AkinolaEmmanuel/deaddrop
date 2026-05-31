@@ -1,0 +1,25 @@
+# Local secrets / environment
+.env
+.env.*
+!.env.example
+
+# Compiled binaries
+deaddrop
+deaddrop.exe
+*.exe
+/out/
+
+# Test & runtime artifacts
+*.log
+received_file
+*_input.txt
+outbox/
+inbox/
+
+# Go build/test cache output
+*.test
+*.out
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
