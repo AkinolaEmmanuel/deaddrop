@@ -1,0 +1,20 @@
+# VCS / tooling
+.git
+.gitignore
+.cursor
+
+# Local secrets — never copy into the build context
+.env
+
+# Build output / test artifacts
+deaddrop
+deaddrop.exe
+received_file
+*.log
+*_input.txt
+
+# Docs / container files (not needed inside the image)
+Dockerfile
+.dockerignore
+docker-compose.yml
+README.md
