@@ -65,6 +65,13 @@ func (r *Room) selfDestruct() {
 
 	if len(r.clients) == 0 && r.destroy != nil {
 		r.destroy()
+
+		// Wake backgroundCleanup now instead of leaving it parked until
+		// transferTimeout — the room is already gone from the manager's map.
+		select {
+		case r.transferDone <- true:
+		default:
+		}
 	}
 }
 

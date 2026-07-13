@@ -43,6 +43,7 @@ independently derive the same key from those two values, so a passive observer
 | `room.go`             | Room lifecycle, idle/transfer timers, teardown              |
 | `roommanager.go`      | Tracks active rooms                                         |
 | `watcher.go`          | Polling file watcher with network-write suppression         |
+| `tunnel.go`           | Auto-managed Cloudflare quick tunnel (download, verify, run) |
 | `gateway/crypto.go`   | scrypt key derivation                                       |
 | `gateway/encrypt.go`  | AES-256-GCM encryption                                       |
 | `gateway/decrypt.go`  | AES-256-GCM decryption / authentication                     |
@@ -92,6 +93,36 @@ To transfer between machines, set `DEADDROP_ADDR` on the sender (e.g.
 `0.0.0.0:8080`) and point the receiver at it with
 `DEADDROP_URL=ws://<sender-host>:8080/ws`.
 
+## Trying it over the internet (free, no account needed)
+
+DeadDrop connects peer-to-peer, so if your tester isn't on the same LAN, the
+sender's port needs a public address. DeadDrop can set this up for you
+automatically using [Cloudflare's quick tunnels](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/do-more-with-tunnels/trycloudflare/) —
+free, no account, no DNS setup, and no separate install step:
+
+1. **Sender (Client A):** run `./deaddrop`, choose "create", and when
+   prompted `Make this room reachable over the internet via a free
+   Cloudflare tunnel?`, answer `y`.
+2. On first use, DeadDrop downloads a pinned, checksum-verified `cloudflared`
+   build for your OS/arch into your user cache directory (reused on every
+   later run — nothing is installed system-wide). It then launches the
+   tunnel itself and prints a ready-to-share line:
+   ```
+   Public URL ready — share this with your peer:
+     DEADDROP_URL=wss://<random-subdomain>.trycloudflare.com/ws
+   ```
+3. **Receiver (Client B):** paste that line before running DeadDrop:
+   ```bash
+   DEADDROP_URL=wss://<random-subdomain>.trycloudflare.com/ws ./deaddrop
+   ```
+
+If you'd rather manage the tunnel yourself (e.g. `cloudflared` is already on
+your `PATH`), DeadDrop uses that copy instead of downloading its own.
+
+Quick tunnels are ephemeral — the URL dies with the DeadDrop process (Ctrl+C
+tears the tunnel down along with it) — and meant for exactly this kind of
+one-off trial, not anything long-lived.
+
 ## Run with Docker
 
 Build the image:
@@ -135,8 +166,16 @@ docker run -it --rm --network deaddrop-net \
 - The AES key is derived locally with **scrypt** and never leaves either peer.
 - Choose a strong passphrase and share the room ID / passphrase over a trusted
   channel. The security of the transfer rests entirely on the passphrase.
-- `CheckOrigin` currently allows all WebSocket origins, which is fine for a
-  local/trusted-network tool but should be tightened before any public exposure.
+- `CheckOrigin` currently allows all WebSocket origins. Combined with the
+  public tunnel option, anyone who guesses the room ID before your peer joins
+  can occupy that single connection slot — they'd only ever see ciphertext
+  they can't decrypt without the passphrase, but it would deny service to your
+  actual peer. Use a hard-to-guess room ID (not "room1") whenever the tunnel
+  is enabled.
+- The auto-downloaded `cloudflared` binary (see "Trying it over the internet")
+  is fetched over HTTPS from GitHub and verified against a sha256 pinned in
+  `tunnel.go` before it's ever executed; it's never trusted on download
+  alone.
 
 ## Known limitations
 

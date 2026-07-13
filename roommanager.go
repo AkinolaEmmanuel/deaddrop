@@ -32,8 +32,10 @@ func (rm *RoomManager) CreateRoom(id string, timeout time.Duration) (*Room, erro
 		rm.DeleteRoom(id)
 	}
 
-	// Create room with cleanup callback passed as parameter
-	newRoom := NewRoom(id, rm.idlePeriod, nil, cleanup, timeout)
+	// destroy and cleanup both remove the room from the manager's map; destroy
+	// fires if no peer ever joins (idle timeout), cleanup fires once a transfer
+	// completes or the post-join transfer timeout elapses.
+	newRoom := NewRoom(id, rm.idlePeriod, cleanup, cleanup, timeout)
 
 	rm.rooms[id] = newRoom
 

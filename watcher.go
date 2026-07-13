@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -15,13 +16,44 @@ const (
 
 var isNetworkWriting atomic.Int32
 
+// NetworkWriteFile writes data to path atomically: it writes to a temp file
+// in the same directory, then renames over the destination, so a crash or
+// interrupt mid-write can never leave a truncated file at path.
 func NetworkWriteFile(path string, data []byte, perm os.FileMode) error {
 	isNetworkWriting.Store(1)
 	defer isNetworkWriting.Store(0)
 
-	if err := os.WriteFile(path, data, perm); err != nil {
-		return fmt.Errorf("failed to write file: %w", err)
+	dir := filepath.Dir(path)
+	temp, err := os.CreateTemp(dir, ".tmp-*")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
 	}
+	tempName := temp.Name()
+
+	var writeErr error
+	defer func() {
+		if writeErr != nil {
+			os.Remove(tempName)
+		}
+	}()
+
+	if _, writeErr = temp.Write(data); writeErr != nil {
+		temp.Close()
+		return fmt.Errorf("failed to write file: %w", writeErr)
+	}
+
+	if writeErr = temp.Close(); writeErr != nil {
+		return fmt.Errorf("failed to close temp file: %w", writeErr)
+	}
+
+	if writeErr = os.Chmod(tempName, perm); writeErr != nil {
+		return fmt.Errorf("failed to set file permissions: %w", writeErr)
+	}
+
+	if writeErr = os.Rename(tempName, path); writeErr != nil {
+		return fmt.Errorf("failed to move file to destination: %w", writeErr)
+	}
+
 	return nil
 }
 

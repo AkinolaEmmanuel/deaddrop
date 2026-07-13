@@ -9,9 +9,13 @@ import (
 
 const (
 	aesKeyLen = 32 // 256 bits
-	scryptN   = 1 << 14
-	scryptR   = 8
-	scryptP   = 1
+	// scryptN=2^17 costs ~1s per derivation on modern hardware. Security here
+	// rests entirely on the passphrase, so we pay that cost to slow down
+	// offline brute force; 2^14 (the old interactive-login default) is too
+	// cheap against today's GPU/ASIC cracking rigs.
+	scryptN = 1 << 17
+	scryptR = 8
+	scryptP = 1
 
 	systemSaltPrefix = "deaddrop_v1:"
 )

@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -417,11 +419,44 @@ func main() {
 		addr := serverAddr()
 		fmt.Printf("\n  Room %q open on %s. Waiting for peer...\n", input.RoomID, addr)
 
+		var tunnel *QuickTunnel
+		if input.Public {
+			fmt.Println("  Starting public tunnel (this may take a moment on first run)...")
+
+			// Generous budget: first run also downloads and verifies
+			// cloudflared, which can take a while on a slow connection.
+			tunnelCtx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+			tunnel, err = StartQuickTunnel(tunnelCtx, addr)
+			cancel()
+
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "  warning: could not start public tunnel: %v\n", err)
+				fmt.Fprintln(os.Stderr, "  Continuing on the local address only.")
+			} else {
+				fmt.Printf("\n  Public URL ready — share this with your peer:\n    DEADDROP_URL=%s\n\n", tunnel.WebSocketURL())
+			}
+		}
+
+		if tunnel != nil {
+			// Ctrl+C should tear down the tunnel before the process exits;
+			// otherwise cloudflared can be left running as an orphan.
+			sigCh := make(chan os.Signal, 1)
+			signal.Notify(sigCh, os.Interrupt)
+			go func() {
+				<-sigCh
+				tunnel.Close()
+				os.Exit(0)
+			}()
+		}
+
 		http.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
 			ServeWS(cfg, w, r)
 		})
 
 		if err := http.ListenAndServe(addr, nil); err != nil {
+			if tunnel != nil {
+				tunnel.Close()
+			}
 			log.Fatalf("server error: %v", err)
 		}
 

@@ -15,6 +15,7 @@ type SessionInput struct {
 	RoomID     string
 	Passphrase string
 	FilePath   string // source file to send; only set for PromptCreate
+	Public     bool   // expose the room via a free Cloudflare tunnel; only set for PromptCreate
 }
 
 type PromptAction uint8
@@ -44,12 +45,19 @@ func RunPrompt() (*SessionInput, error) {
 		return nil, err
 	}
 
-	// Prompt for the source file before the passphrase. The passphrase read
-	// bypasses the bufio reader (term.ReadPassword reads the fd directly), so
-	// it must come last to avoid discarding buffered stdin.
+	// Prompt for the source file and tunnel choice before the passphrase.
+	// The passphrase read bypasses the bufio reader (term.ReadPassword reads
+	// the fd directly), so it must come last to avoid discarding buffered
+	// stdin.
 	var filePath string
+	var public bool
 	if action == PromptCreate {
 		filePath, err = promptFilePath(reader)
+		if err != nil {
+			return nil, err
+		}
+
+		public, err = promptPublic(reader)
 		if err != nil {
 			return nil, err
 		}
@@ -65,7 +73,23 @@ func RunPrompt() (*SessionInput, error) {
 		RoomID:     roomID,
 		Passphrase: passphrase,
 		FilePath:   filePath,
+		Public:     public,
 	}, nil
+}
+
+// promptPublic asks whether to expose the room over the internet via an
+// auto-managed Cloudflare quick tunnel (see tunnel.go). Declining (the
+// default) keeps the room reachable only on the local network.
+func promptPublic(reader *bufio.Reader) (bool, error) {
+	fmt.Print("Make this room reachable over the internet via a free Cloudflare tunnel? (y/N): ")
+
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return false, fmt.Errorf("failed to read tunnel choice: %w", err)
+	}
+
+	input = strings.ToLower(strings.TrimSpace(input))
+	return input == "y" || input == "yes", nil
 }
 
 func promptFilePath(reader *bufio.Reader) (string, error) {
@@ -151,6 +175,20 @@ func promptRoomID(reader *bufio.Reader, action PromptAction) (string, error) {
 
 }
 
+// minStrongPassphraseLen is a soft floor: transfer security rests entirely on
+// the passphrase (see README "Security notes"), so anything shorter gets a
+// warning. This does not block short input — some users may share a
+// passphrase generated elsewhere.
+const minStrongPassphraseLen = 12
+
+func warnIfWeakPassphrase(passphrase string) {
+	if len(passphrase) < minStrongPassphraseLen {
+		fmt.Fprintf(os.Stderr,
+			"Warning: passphrase is short (%d chars). The transfer's security rests entirely on it — consider a longer, random passphrase.\n",
+			len(passphrase))
+	}
+}
+
 func promptPassphrase(reader *bufio.Reader) (string, error) {
 	fmt.Print("Enter the passphrase for the room: ")
 
@@ -166,6 +204,7 @@ func promptPassphrase(reader *bufio.Reader) (string, error) {
 		if passphrase == "" {
 			return "", errors.New("passphrase cannot be empty")
 		}
+		warnIfWeakPassphrase(passphrase)
 		return passphrase, nil
 
 	}
@@ -182,5 +221,6 @@ func promptPassphrase(reader *bufio.Reader) (string, error) {
 	if passphrase == "" {
 		return "", errors.New("passphrase cannot be empty")
 	}
+	warnIfWeakPassphrase(passphrase)
 	return passphrase, nil
 }

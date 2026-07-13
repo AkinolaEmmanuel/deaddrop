@@ -5,7 +5,6 @@ import (
 	"crypto/cipher"
 	"errors"
 	"fmt"
-	"os"
 )
 
 var ErrAuthFailed = errors.New("decryption failed: wrong key or corrupted data")
@@ -43,39 +42,4 @@ func DecryptPayload(cp *CryptoPayload, key []byte) ([]byte, error) {
 	}
 
 	return plaintext, nil
-}
-
-func DecryptToFile(cp *CryptoPayload, key []byte, outputPath string) error {
-	plaintext, err := DecryptPayload(cp, key)
-	if err != nil {
-		return err
-	}
-
-	temp, err := os.CreateTemp("", "decrypted-*")
-	if err != nil {
-		return fmt.Errorf("failed to create temp file: %w", err)
-	}
-
-	tempName := temp.Name()
-
-	var writeErr error
-	defer func() {
-		if writeErr != nil {
-			os.Remove(tempName)
-		}
-	}()
-
-	if _, writeErr = temp.Write(plaintext); writeErr != nil {
-		return fmt.Errorf("failed to write decrypted data: %w", writeErr)
-	}
-
-	if writeErr = temp.Close(); writeErr != nil {
-		return fmt.Errorf("failed to close temp file: %w", writeErr)
-	}
-
-	if writeErr = os.Rename(tempName, outputPath); writeErr != nil {
-		return fmt.Errorf("failed to move decrypted file to destination: %w", writeErr)
-	}
-
-	return nil
 }
